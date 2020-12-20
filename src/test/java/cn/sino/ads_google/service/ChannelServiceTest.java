@@ -18,4 +18,9 @@ public class ChannelServiceTest {
     public void getAdAccountListTest() throws IOException {
         channelService.getAdAccountList();
     }
+
+    @Test
+    public void getAdAccountDetailTest() throws IOException {
+        channelService.getAdAccountDetail("981-482-9419","dvip");
+    }
 }

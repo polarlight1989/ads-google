@@ -3,9 +3,9 @@ server:
 spring:
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://${env.db.host:47.91.170.6}:${env.db.port:3306}/${env.db.database:facebook}?serverTimezone=Asia/Shanghai&useUnicode=true&characterEncoding=utf-8&useSSL=false&allowMultiQueries=true
-    username: ${env.db.username:ods_select}
-    password: ${env.db.password:ods_select}
+    url: jdbc:mysql://${env.db.host:127.0.0.1}:${env.db.port:3306}/${env.db.database:shopdata}?serverTimezone=Asia/Shanghai&useUnicode=true&characterEncoding=utf-8&useSSL=false&allowMultiQueries=true
+    username: ${env.db.username:root}
+    password: ${env.db.password:123456}
 #    type: com.alibaba.druid.pool.DruidDataSource
 #    druid:
 #      filters: config

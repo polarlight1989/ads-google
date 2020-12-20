@@ -5,7 +5,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-@MapperScan("cn.sino.ads_google.mapper.facebook")
+@MapperScan("cn.sino.ads_google.mapper")
 public class AdsGoogleApplication {
 
 	public static void main(String[] args) {
