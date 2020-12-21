@@ -1,8 +1,12 @@
 package cn.sino.ads_google.service;
 
+import cn.sino.ads_google.dto.AdAccountSearchDto;
 import cn.sino.ads_google.entity.GoogleAccountEntity;
 import cn.sino.ads_google.entity.facebook.AdaccountsEntity;
 import cn.sino.ads_google.mapper.GoogleAccountMapper;
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONArray;
+import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.google.ads.googleads.lib.GoogleAdsClient;
 import com.google.ads.googleads.v6.services.GoogleAdsRow;
@@ -13,15 +17,21 @@ import io.swagger.models.properties.FileProperty;
 import lombok.extern.slf4j.Slf4j;
 import cn.sino.ads_google.mapper.facebook.AdaccountsMapper;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.RestTemplate;
 
 import javax.annotation.Resource;
 import java.io.ByteArrayOutputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.PrintStream;
-import java.util.List;
-import java.util.Properties;
+import java.text.SimpleDateFormat;
+import java.util.*;
 
 @Slf4j
 @Service
@@ -50,10 +60,97 @@ public class ChannelService {
     public GoogleAdsVersion getGoogleAdsClientVersion(String type){
         return GoogleAdsClient.newBuilder().fromProperties(getProperties(type)).build().getLatestVersion();
     }
+    public void updateAdAccountList(){
+        Date day=new Date();
+        SimpleDateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
+        Calendar calendar = new GregorianCalendar();
+        calendar.setTime(new Date());
+        String endDate = sdf.format(calendar.getTime());
+
+        calendar.add(calendar.DATE,-30);
+        String startDate = sdf.format(calendar.getTime());
+        log.info("startDate:"+startDate);
+        log.info("endDate:"+endDate);
+        QueryWrapper<GoogleAccountEntity> qw = new QueryWrapper<>();
+        List<GoogleAccountEntity> googleAccountEntityList = googleAccountMapper.selectList(qw);
+        log.info("googleAccountEntityList.size:"+String.valueOf(googleAccountEntityList.size()));
+        Integer splitSize = 500;
+        Map<String,GoogleAccountEntity> requestGoogleEntityMap = new HashMap<>();
+        Integer ind = 0;
+        AdAccountSearchDto adAccountSearchDto = new AdAccountSearchDto();
+        for(GoogleAccountEntity googleAccountEntity : googleAccountEntityList){
+            adAccountSearchDto.setDateStart(startDate);
+            adAccountSearchDto.setDateStop(endDate);
+            ind++;
+            requestGoogleEntityMap.put(googleAccountEntity.getAccountId(),googleAccountEntity);
+            adAccountSearchDto.addAccount(googleAccountEntity.getAccountId());
+            if(requestGoogleEntityMap.size() >= splitSize || ind.equals(googleAccountEntityList.size())){
+                log.info("JSON:"+JSON.toJSONString(adAccountSearchDto));
+                RestTemplate restTemplate = new RestTemplate();
+                String url = "http://47.90.100.235/search";
+                HttpHeaders headers = new HttpHeaders();
+                headers.setContentType(MediaType.APPLICATION_JSON);
+                HttpEntity<String> request = new HttpEntity<String>(JSON.toJSONString(adAccountSearchDto), headers);
+                ResponseEntity<JSONObject> response = restTemplate.postForEntity( url, request , JSONObject.class );
+                log.info("response:"+response);
+                JSONArray jsonArray = response.getBody().getJSONArray("data");
+                for(Object o : jsonArray){
+                    JSONObject object = JSONObject.parseObject(o.toString());
+                    log.info(String.valueOf(object));
+                    GoogleAccountEntity _googleAccountEntity = requestGoogleEntityMap.get(object.getString("adaccount_id"));
+                    _googleAccountEntity.setCurrency(object.getString("currency"));
+                    _googleAccountEntity.setImpressions(object.getLong("impressions"));
+                    _googleAccountEntity.setClicks(object.getLong("clicks"));
+                    _googleAccountEntity.setLandingPageViews(object.getLong("landing_page_views"));
+                    _googleAccountEntity.setAddToCart(object.getLong("add_to_cart"));
+                    _googleAccountEntity.setPurchase(object.getDouble("purchase"));
+                    _googleAccountEntity.setConversions(object.getDouble("conversions"));
+                    _googleAccountEntity.setSpend(object.getDouble("spend"));
+                    _googleAccountEntity.setRevenue(object.getDouble("revenue"));
+                    _googleAccountEntity.setPurchaseValue(object.getDouble("purchase_value"));
+                    requestGoogleEntityMap.put(object.getString("adaccount_id"),_googleAccountEntity);
+                    log.info("_googleAccountEntity:"+_googleAccountEntity.toString());
+                }
+                requestGoogleEntityMap.forEach((k,v)->{
+                    v.setSyncTime(new Date());
+                    googleAccountMapper.updateById(v);
+                });
+                adAccountSearchDto = new AdAccountSearchDto();
+                requestGoogleEntityMap = new HashMap<>();
+            }
+        }
+    }
+//    public void post(){
+//        RestTemplate restTemplate = new RestTemplate();
+//        HttpHeaders headers = new HttpHeaders();
+//        headers.setContentType(MediaType.APPLICATION_JSON);
+//        HttpEntity<String> request = new HttpEntity<String>(JSON.toJSONString(adAccountSearchDto), headers);
+//        ResponseEntity<JSONObject> response = restTemplate.postForEntity( url, request , JSONObject.class );
+//    }
     public void getAdAccountDetail(String accountNo,String type){
         accountNo = accountNo.replace("-","");
         GoogleAdsVersion googleAdsClientVersion = getGoogleAdsClientVersion(type);
+    }
+    public void getAdList(GoogleAccountEntity googleAccountEntity){
+        String accountNo = googleAccountEntity.getParseAccountId();
 
+        GoogleAdsClient googleAdsClient = null;
+        Properties properties = getProperties(googleAccountEntity.getType());
+        System.out.println(properties);
+        googleAdsClient = GoogleAdsClient.newBuilder().fromProperties(properties).build();
+        //String query = "SELECT customer.resource_name,customer.currency_code FROM customer  ";
+        String query = "SELECT ad_group_ad.ad.id,ad_group_ad.ad.type,ad_group_ad.ad.final_urls FROM ad_group_ad   ";
+        //String query = "SELECT metrics.cost_micros FROM customer WHERE segments.date >= '2020-11-19' AND segments.date <= '2020-12-19'";
+        SearchGoogleAdsRequest request = SearchGoogleAdsRequest.newBuilder().setCustomerId(accountNo).setQuery(query).build();
+        GoogleAdsServiceClient googleAdsService = googleAdsClient.getLatestVersion().createGoogleAdsServiceClient();
+
+
+        GoogleAdsServiceClient.SearchPagedResponse response = googleAdsService.search(request);
+        for (GoogleAdsRow googleAdsRow : response.iterateAll()) {
+            log.info(String.valueOf(googleAdsRow));
+
+        }
     }
     public void getAdAccountList() throws IOException {
         GoogleAdsClient googleAdsClient = null;
@@ -67,7 +164,7 @@ public class ChannelService {
             Properties properties = getProperties(googleAccountEntity.getType());
             googleAdsClient = GoogleAdsClient.newBuilder().fromProperties(properties).build();
             String query = "SELECT metrics.cost_micros FROM customer WHERE segments.date >= '2020-11-19' AND segments.date <= '2020-12-19'";
-            String accountNo = googleAccountEntity.getAccountNo().replace("-","");
+            String accountNo = googleAccountEntity.getAccountId().replace("-","");
             SearchGoogleAdsRequest request = SearchGoogleAdsRequest.newBuilder().setCustomerId(accountNo).setQuery(query).build();
             GoogleAdsServiceClient googleAdsService = googleAdsClient.getLatestVersion().createGoogleAdsServiceClient();
             try{

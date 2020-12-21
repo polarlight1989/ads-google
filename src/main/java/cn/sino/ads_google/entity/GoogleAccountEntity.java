@@ -10,7 +10,7 @@ import java.util.Date;
 @TableName("google_account")
 public class GoogleAccountEntity {
     private Integer id;
-    private String AccountNo;
+    private String accountId;
     private Date createTime;
     private Double spend;
     private String type;
@@ -23,12 +23,15 @@ public class GoogleAccountEntity {
     private Long landingPageViews;
     @JSONField(name="add_to_cart")
     private Long addToCart;
-    private Long purchase;
+    private Double purchase;
     private Double conversions;
     private Double revenue;
     @JSONField(name="purchase_value")
     private Double purchaseValue;
 
-    private Double syncTime;
+    private Date syncTime;
 
+    public String getParseAccountId(){
+        return accountId.replace("-","");
+    }
 }
